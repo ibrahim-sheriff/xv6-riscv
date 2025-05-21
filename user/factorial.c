@@ -14,11 +14,13 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  int n = atoi(argv[1]);
-  if(n < 0){
+  // Manual check for negative numbers, since atoi() in xv6 doesn't handle them
+  if(argv[1][0] == '-'){
     printf("fact: number must be non-negative\n");
     exit(1);
   }
+
+  int n = atoi(argv[1]);
 
   printf("Factorial of %d is %d\n", n, factorial(n));
   exit(0);
