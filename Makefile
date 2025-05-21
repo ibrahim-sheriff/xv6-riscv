@@ -28,6 +28,7 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
+  $K/sysutil.o \
   $K/virtio_disk.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
@@ -139,6 +140,20 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_add\
+	$U/_sleep\
+	$U/_touch\
+	$U/_factorial\
+	$U/_move\
+	$U/_find\
+	$U/_copy\
+	$U/_kbdint\
+	$U/_countsyscall\
+	$U/_getppid\
+	$U/_getptable\
+	$U/_datetime\
+	$U/_randd\
+	$U/_schedtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

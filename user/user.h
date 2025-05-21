@@ -1,4 +1,14 @@
 struct stat;
+struct datetime {
+  int year;
+  int month;
+  int day;
+  int hour;
+  int minute;
+  int second;
+};
+
+int datetime(struct datetime *);
 
 // system calls
 int fork(void);
@@ -22,6 +32,11 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int kbdint(void);
+int countsyscall(void);
+int getppid(void);
+int getptable(int nproc, void *buffer);
+int randd(void);
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -41,3 +56,6 @@ void *memcpy(void *, const void *, uint);
 // umalloc.c
 void* malloc(uint);
 void free(void*);
+int setscheduler(int mode);
+int setpriority(int pid, int priority);
+int printmetrics(void);
