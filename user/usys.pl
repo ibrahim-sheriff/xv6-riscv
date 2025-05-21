@@ -42,3 +42,6 @@ entry("getppid");
 entry("getptable");
 entry("datetime");
 entry("randd");
+entry("setscheduler");
+entry("setpriority");
+entry("printmetrics");

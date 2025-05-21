@@ -6,6 +6,38 @@
 #include "spinlock.h"
 #include "proc.h"
 
+extern struct proc proc[];
+
+#ifndef SCHED_PRIORITY
+#define SCHED_PRIORITY 2
+#endif
+
+uint64 sys_getppid(void);
+
+uint64 sys_getptable(void);
+
+extern int getptable(int nproc, uint64 buffer);
+
+uint64
+sys_getptable(void)
+{
+  int nproc;
+  uint64 buffer;
+  argint(0, &nproc);
+  argaddr(1, &buffer);
+  return getptable(nproc, buffer);
+}
+
+//2.3 Get parent process ID
+uint64
+sys_getppid(void)
+{
+  struct proc *p = myproc();
+  if(p->parent)
+    return p->parent->pid;
+  return 0;
+}
+
 uint64
 sys_exit(void)
 {
@@ -90,4 +122,43 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_setscheduler(void)
+{
+  int mode;
+  argint(0, &mode);
+  if (mode == SCHED_ROUND_ROBIN || mode == SCHED_FCFS || mode == SCHED_PRIORITY) {
+    sched_mode = mode;
+    return 0;
+  }
+  return -1; // invalid mode
+}
+
+uint64
+sys_setpriority(void)
+{
+  int pid, priority;
+  argint(0, &pid);
+  argint(1, &priority);
+
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->pid == pid){
+      p->priority = priority;
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+  return -1; // pid not found
+}
+
+uint64
+sys_printmetrics(void)
+{
+  print_metrics();
+  return 0;
 }

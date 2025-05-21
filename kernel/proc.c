@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+struct proc *choose_next_process(void);
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -33,7 +35,7 @@ void
 proc_mapstacks(pagetable_t kpgtbl)
 {
   struct proc *p;
-  
+
   for(p = proc; p < &proc[NPROC]; p++) {
     char *pa = kalloc();
     if(pa == 0)
@@ -43,12 +45,41 @@ proc_mapstacks(pagetable_t kpgtbl)
   }
 }
 
+int
+getptable(int nproc, uint64 buffer)
+{
+  struct proc *p;
+  struct procinfo info;
+  int count = 0;
+
+  if(nproc < 1)
+    return 0;
+
+  for(p = proc; p < &proc[NPROC] && count < nproc; p++){
+  acquire(&p->lock);
+  if(p->state != UNUSED){
+    info.pid = p->pid;
+    info.ppid = p->parent ? p->parent->pid : 0;
+    info.state = p->state;
+    safestrcpy(info.name, p->name, sizeof(info.name));
+    info.sz = p->sz;
+    if(copyout(myproc()->pagetable, buffer + count * sizeof(info), (char *)&info, sizeof(info)) < 0){
+      release(&p->lock);
+      return 0;
+    }
+    count++;
+  }
+  release(&p->lock);
+}
+  return count;
+}
+
 // initialize the proc table.
 void
 procinit(void)
 {
   struct proc *p;
-  
+
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -93,7 +124,7 @@ int
 allocpid()
 {
   int pid;
-  
+
   acquire(&pid_lock);
   pid = nextpid;
   nextpid = nextpid + 1;
@@ -145,6 +176,10 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  p->creation_time = ticks;
+  p->end_time = 0;
+  p->waiting_time = 0;
 
   return p;
 }
@@ -236,7 +271,7 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
+
   // allocate one user page and copy initcode's instructions
   // and data into it.
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
@@ -372,8 +407,11 @@ exit(int status)
 
   // Parent might be sleeping in wait().
   wakeup(p->parent);
-  
+
   acquire(&p->lock);
+
+  p->xstate = status;
+  p->end_time = ticks;
 
   p->xstate = status;
   p->state = ZOMBIE;
@@ -428,7 +466,7 @@ wait(uint64 addr)
       release(&wait_lock);
       return -1;
     }
-    
+
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
@@ -455,12 +493,13 @@ scheduler(void)
     intr_on();
 
     int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
+
+    p = choose_next_process();
+
+    if(p != 0) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
+
+      if (p->state == RUNNABLE) {
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
@@ -548,7 +587,7 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
+
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -627,7 +666,7 @@ int
 killed(struct proc *p)
 {
   int k;
-  
+
   acquire(&p->lock);
   k = p->killed;
   release(&p->lock);
@@ -691,5 +730,111 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+#define SCHED_ROUND_ROBIN 0
+#define SCHED_FCFS 1
+#define SCHED_PRIORITY 2
+
+int sched_mode = SCHED_ROUND_ROBIN;
+
+struct proc *choose_next_process() {
+  struct proc *p;
+
+  if(sched_mode == SCHED_ROUND_ROBIN) {
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if (p->state == RUNNABLE)
+        return p;
+    }
+  }
+  else if (sched_mode == SCHED_FCFS) {
+    struct proc *first = 0;
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if (p->state == RUNNABLE) {
+        if (first == 0 || p->creation_time < first->creation_time) {
+          first = p;
+        }
+      }
+    }
+    return first;
+  }
+  else if (sched_mode == SCHED_PRIORITY) {
+    struct proc *best = 0;
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if (p->state == RUNNABLE) {
+        if (best == 0 ||
+            p->priority < best->priority ||
+            (p->priority == best->priority && p->creation_time < best->creation_time)) {
+          best = p;
+        }
+      }
+    }
+    return best;
+  }
+
+  // Add more else statements each time you create a new scheduler
+
+  return 0;
+}
+
+// Update runtime statistics for each process.
+// Call this function on every timer tick.
+void
+update_time()
+{
+  struct proc* p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state == RUNNING) {
+      p->run_time++;
+    }
+    if (p->state == RUNNABLE) {
+      p->waiting_time++;
+    }
+    // You can add more counters for other states if needed
+    release(&p->lock);
+  }
+}
+
+// Print average turnaround and waiting times for all finished processes
+void
+print_metrics(void)
+{
+  struct proc *p;
+  int count = 0;
+  uint total_turnaround = 0;
+  uint total_waiting = 0;
+
+  // First pass: print the table
+  printf("PID\tTurnaround\tWaiting\n");
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->end_time > 0 && p->creation_time > 0 && p->pid > 2){ // skip init/sh
+      uint turnaround = p->end_time - p->creation_time;
+      printf("%d\t%d\t\t%d\n", p->pid, turnaround, p->waiting_time);
+      total_turnaround += turnaround;
+      total_waiting += p->waiting_time;
+      count++;
+    }
+  }
+
+  if(count > 0){
+    printf("Average Turnaround Time: %d\n", total_turnaround / count);
+    printf("Average Waiting Time: %d\n", total_waiting / count);
+  } else {
+    printf("No finished processes to report metrics.\n");
+    return;
+  }
+
+  // Second pass: print calculation details
+  printf("\nCalculation details for each process:\n");
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->end_time > 0 && p->creation_time > 0 && p->pid > 2){
+      uint turnaround = p->end_time - p->creation_time;
+      printf("PID %d:\n", p->pid);
+      printf("    Turnaround = end_time(%d) - creation_time(%d) = %d\n",
+             p->end_time, p->creation_time, turnaround);
+      printf("    Waiting = %d (accumulated while RUNNABLE)\n", p->waiting_time);
+    }
   }
 }

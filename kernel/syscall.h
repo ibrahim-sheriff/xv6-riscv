@@ -26,3 +26,6 @@
 #define SYS_getptable  25
 #define SYS_datetime   26
 #define SYS_randd       27
+#define SYS_setscheduler  28
+#define SYS_setpriority  29
+#define SYS_printmetrics 30

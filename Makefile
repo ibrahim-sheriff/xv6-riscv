@@ -148,6 +148,12 @@ UPROGS=\
 	$U/_find\
 	$U/_copy\
 	$U/_kbdint\
+	$U/_countsyscall\
+	$U/_getppid\
+	$U/_getptable\
+	$U/_datetime\
+	$U/_randd\
+	$U/_schedtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -1,3 +1,10 @@
+#include "param.h"
+#include "spinlock.h"
+#include "file.h"
+#include "fs.h"
+
+
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -103,5 +110,27 @@ struct proc {
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
+  char name[16];              // Process name (debugging)
+
+  uint creation_time;          // Ticks when process was created
+  uint run_time;               // How long the process has run
+  int priority;                // Lower value = higher priority
+  uint end_time;               // Ticks when process finished
+  uint waiting_time;
 };
+
+struct procinfo {
+  int pid;
+  int ppid;
+  int state;
+  char name[16];
+  uint64 sz;
+};
+
+// Scheduler constants to set the scheduling mode
+#define SCHED_ROUND_ROBIN 0
+#define SCHED_FCFS        1
+#define SCHED_PRIORITY    2
+
+extern int sched_mode;  // Declare global scheduler mode
+void print_metrics(void);
